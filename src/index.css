@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  }
+}
+
+.prose pre {
+  background-color: theme('colors.gray.100');
+  border-radius: theme('borderRadius.lg');
+  padding: theme('spacing.4');
+}
+
+.dark .prose pre {
+  background-color: theme('colors.gray.900');
+}
+
+.prose code {
+  background-color: theme('colors.gray.100');
+  padding: theme('spacing.1') theme('spacing.2');
+  border-radius: theme('borderRadius.md');
+  font-size: 0.875em;
+}
+
+.dark .prose code {
+  background-color: theme('colors.gray.900');
+  color: theme('colors.gray.300');
+}
+
+.prose {
+  max-width: none;
+}
