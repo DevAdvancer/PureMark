@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sun, Moon, Download, Copy, Layout, Github } from 'lucide-react';
+import { Sun, Moon, Download, Copy, Layout, Github, FileText } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { marked } from 'marked';
+
+// Configure marked options
+marked.setOptions({
+  breaks: true,
+  gfm: true
+});
 
 const defaultMarkdown = `# Welcome to PureMark
 
@@ -57,6 +65,140 @@ function App() {
     }
   };
 
+  interface TocItem {
+    level: number;
+    text: string;
+    page: number;
+  }
+
+  const handlePdfExport = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    let currentY = margin;
+    let currentPage = 1;
+    const toc: TocItem[] = [];
+
+    // Add custom font
+    doc.addFont('helvetica', 'normal');
+    doc.addFont('helvetica', 'bold');
+
+    // Function to add a new page
+    const addNewPage = () => {
+      doc.addPage();
+      currentPage++;
+      currentY = margin;
+      // Add page number
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Page ${currentPage}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+    };
+
+    // Function to process text blocks with proper wrapping
+    const addTextBlock = (text: string, fontSize: number, fontStyle: string = 'normal') => {
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', fontStyle);
+      const lines = doc.splitTextToSize(text, pageWidth - 2 * margin);
+
+      lines.forEach((line: string) => {
+        if (currentY > pageHeight - margin) {
+          addNewPage();
+        }
+        doc.text(line, margin, currentY);
+        currentY += fontSize * 0.5;
+      });
+      currentY += fontSize * 0.3;
+    };
+
+    // Create title page
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Markdown Document', pageWidth / 2, currentY, { align: 'center' });
+    currentY += 40;
+
+    // Add date
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated on ${new Date().toLocaleDateString()}`, pageWidth / 2, currentY, { align: 'center' });
+
+    // Add new page for TOC
+    addNewPage();
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Table of Contents', margin, currentY);
+    currentY += 20;
+
+    // Parse markdown and generate content
+    const tokens = marked.lexer(markdown);
+    let tocY = currentY;  // Save position for TOC
+
+    // Add new page for content
+    addNewPage();
+
+    tokens.forEach((token: marked.Token) => {
+      if (token.type === 'heading') {
+        // Add to TOC
+        toc.push({
+          level: token.depth,
+          text: token.text,
+          page: currentPage
+        });
+
+        // Add heading to content
+        const fontSize = 20 - token.depth * 2;
+        addTextBlock(token.text, fontSize, 'bold');
+      }
+      else if (token.type === 'paragraph') {
+        addTextBlock(token.text, 12);
+      }
+      else if (token.type === 'code') {
+        currentY += 10;
+        doc.setFillColor(245, 245, 245);
+        const codeLines = token.text.split('\n');
+        const codeHeight = codeLines.length * 14;
+        doc.rect(margin - 5, currentY - 5, pageWidth - 2 * margin + 10, codeHeight + 10, 'F');
+
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(10);
+        codeLines.forEach((line: string) => {
+          if (currentY > pageHeight - margin) {
+            addNewPage();
+          }
+          doc.text(line, margin, currentY);
+          currentY += 14;
+        });
+        doc.setFont('helvetica', 'normal');
+        currentY += 10;
+      }
+      else if (token.type === 'list') {
+        token.items.forEach((item: any) => {
+          if (currentY > pageHeight - margin) {
+            addNewPage();
+          }
+          doc.setFontSize(12);
+          doc.text('• ', margin, currentY);
+          addTextBlock(item.text, 12);
+        });
+      }
+    });
+
+    // Go back and fill in TOC
+    doc.setPage(2);
+    currentY = tocY;
+    toc.forEach((item) => {
+      const indent = (item.level - 1) * 10;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${item.text}`, margin + indent, currentY);
+      doc.text(`${item.page}`, pageWidth - margin, currentY, { align: 'right' });
+      currentY += 15;
+    });
+
+    // Save the PDF
+    doc.save('markdown-document.pdf');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <div className="container mx-auto px-4 py-8">
@@ -89,6 +231,13 @@ function App() {
               <Download className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
             <button
+              onClick={handlePdfExport}
+              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title="Export to PDF"
+            >
+              <FileText className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+            </button>
+            <button
               onClick={() => setIsDark(!isDark)}
               className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
               title="Toggle Theme"
@@ -114,7 +263,9 @@ function App() {
           </div>
           {showPreview && (
             <div className="h-[calc(100vh-12rem)] overflow-auto">
-              <div className="prose dark:prose-invert max-w-none p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div
+                className="prose dark:prose-invert max-w-none p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+              >
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
               </div>
             </div>
